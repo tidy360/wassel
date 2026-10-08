@@ -1,0 +1,43 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../../api/client";
+import { useToast } from "../../context/ToastContext";
+
+type Ticket = { id: string; ticketNumber: string; tenantId: string; subject: string; categoryName: string; priority: string; status: string; contactPhone?: string | null; bestContactTime?: string | null; representativeName?: string | null; createdAt: string; updatedAt: string; slaBreached: boolean; merchant?: { businessName: string; phone: string | null; email: string | null; status: string } | null; store?: { name: string; phone: string | null; address: string | null } | null; messages?: { message: string; senderType: string; createdAt: string }[]; internalNotes?: { id: string; note: string; createdAt: string }[] };
+const priorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+const statuses: Record<string, string> = { OPEN: "مفتوحة", ASSIGNED: "مُسندة", IN_PROGRESS: "قيد المعالجة", WAITING_FOR_MERCHANT: "بانتظار التاجر", WAITING_FOR_REPRESENTATIVE: "بانتظار المندوب", RESOLVED: "تم الحل", CLOSED: "مغلقة", REOPENED: "معاد فتحها" };
+const statusColors: Record<string, string> = { RESOLVED: "bg-green-100 text-green-800", IN_PROGRESS: "bg-yellow-100 text-yellow-800", ASSIGNED: "bg-blue-100 text-blue-800", OPEN: "bg-red-100 text-red-800" };
+
+export default function AdminSupportTicketsPage() {
+  const { push } = useToast();
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [selected, setSelected] = useState<Ticket | null>(null);
+  const [filters, setFilters] = useState({ status: "", priority: "" });
+  const [reply, setReply] = useState("");
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!selected?.merchant) return;
+    const details = document.querySelector("main .max-w-5xl > section:first-of-type p.text-sm.text-ink\\/60");
+    if (details) details.textContent = `التاجر: ${selected.merchant.businessName} · الهاتف: ${selected.contactPhone || selected.merchant.phone || "—"} · البريد: ${selected.merchant.email || "—"} · المتجر: ${selected.store?.name || "—"} · وقت التواصل: ${selected.bestContactTime || "—"}`;
+  }, [selected]);
+  async function reload() { setTickets(await api.get<Ticket[]>(`/api/admin/support/tickets?status=${filters.status}&priority=${filters.priority}`)); }
+  useEffect(() => { reload().catch((error) => push(error.message, "error")); }, [filters.status, filters.priority]);
+  useEffect(() => {
+    const rows = document.querySelectorAll("main .max-w-6xl tbody tr");
+    rows.forEach((row) => {
+      const cell = row.children[6] as HTMLElement | undefined;
+      if (!cell) return;
+      const status = tickets.find((ticket) => ticket.ticketNumber === row.children[0]?.textContent?.trim())?.status;
+      cell.className = "p-3";
+      const badge = document.createElement("span");
+      badge.className = `inline-flex rounded px-2 py-1 text-xs font-bold ${statusColors[status || "OPEN"] || "bg-red-100 text-red-800"}`;
+      badge.textContent = cell.textContent || "";
+      cell.replaceChildren(badge);
+    });
+  }, [tickets]);
+  async function openTicket(id: string) { try { setSelected(await api.get<Ticket>(`/api/admin/support/tickets/${id}`)); } catch (error: any) { push(error.message, "error"); } }
+  async function update(path: string, body: unknown) { if (!selected) return; try { await api.post(`/api/admin/support/tickets/${selected.id}/${path}`, body); await openTicket(selected.id); await reload(); } catch (error: any) { push(error.message, "error"); } }
+  const counts = { all: tickets.length, open: tickets.filter((t) => ["OPEN", "ASSIGNED", "IN_PROGRESS", "REOPENED"].includes(t.status)).length, critical: tickets.filter((t) => t.priority === "CRITICAL").length, high: tickets.filter((t) => t.priority === "HIGH").length, waiting: tickets.filter((t) => t.status.includes("WAITING")).length, breached: tickets.filter((t) => t.slaBreached).length };
+  if (selected) return <div className="max-w-5xl space-y-4"><button onClick={() => setSelected(null)} className="text-nile-700 underline">العودة إلى قائمة الشكاوى</button><section className="bg-white border border-nile-100 rounded-lg p-5 space-y-3"><div className="flex justify-between gap-3"><div><h1 className="text-2xl font-black text-nile-900">{selected.ticketNumber}</h1><p className="text-lg">{selected.subject}</p></div><span className="rounded bg-nile-100 px-3 py-1 h-fit">{statuses[selected.status] || selected.status}</span></div><p className="text-sm text-ink/60">التاجر: {selected.tenantId} · النوع: {selected.categoryName} · المندوب: {selected.representativeName || "لا يوجد"}</p>{selected.slaBreached && <p className="rounded bg-danger/10 p-2 text-danger">SLA Breached</p>}<div className="flex flex-wrap gap-2"><select value={selected.priority} onChange={(e) => update("priority", { priority: e.target.value })} className="rounded border border-nile-100 px-3 py-2">{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select><select value={selected.status} onChange={(e) => update("status", { status: e.target.value })} className="rounded border border-nile-100 px-3 py-2">{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></section><section className="space-y-2">{selected.messages?.map((item, index) => <div key={`${item.createdAt}-${index}`} className="rounded border border-nile-100 bg-white p-3"><div className="text-xs text-ink/50">{item.senderType}</div>{item.message}</div>)}<div className="flex gap-2"><input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="اكتب رد خدمة العملاء" className="flex-1 rounded border border-nile-100 px-3 py-2" /><button onClick={async () => { await update("messages", { message: reply }); setReply(""); }} className="rounded bg-gold-500 px-4 py-2 font-bold">إرسال</button></div></section><section className="bg-nile-50 rounded-lg p-4 space-y-2"><h2 className="font-bold">ملاحظات داخلية</h2>{selected.internalNotes?.map((item) => <p key={item.id} className="text-sm border-b border-nile-100 pb-2">{item.note}</p>)}<div className="flex gap-2"><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة لا تظهر للتاجر" className="flex-1 rounded border border-nile-100 px-3 py-2" /><button onClick={async () => { await update("internal-notes", { note }); setNote(""); }} className="rounded bg-nile-700 text-white px-4 py-2">حفظ</button></div></section></div>;
+  return <div className="max-w-6xl space-y-5"><h1 className="text-2xl font-black text-nile-900">مركز الدعم والشكاوى</h1><div className="grid grid-cols-2 md:grid-cols-6 gap-3">{[["الإجمالي", counts.all], ["المفتوحة", counts.open], ["حرجة", counts.critical], ["عالية", counts.high], ["بانتظار", counts.waiting], ["SLA متجاوز", counts.breached]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-nile-100 bg-white p-4"><div className="text-xs text-ink/60">{label}</div><div className="text-2xl font-black text-nile-900">{value}</div></div>)}</div><div className="flex gap-2"><select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })} className="rounded border border-nile-100 px-3 py-2"><option value="">كل الأولويات</option>{priorities.map((priority) => <option key={priority}>{priority}</option>)}</select><select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} className="rounded border border-nile-100 px-3 py-2"><option value="">كل الحالات</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="bg-white border border-nile-100 rounded-lg overflow-x-auto"><table className="w-full text-sm"><thead className="bg-nile-50"><tr>{["Ticket #", "التاجر", "العنوان", "النوع", "المندوب", "الأولوية", "الحالة", "الإنشاء"].map((heading) => <th key={heading} className="p-3 text-start">{heading}</th>)}</tr></thead><tbody>{tickets.map((ticket) => <tr key={ticket.id} className="border-t border-nile-50"><td className="p-3"><button onClick={() => openTicket(ticket.id)} className="text-nile-700 underline">{ticket.ticketNumber}</button></td><td className="p-3">{ticket.tenantId}</td><td className="p-3">{ticket.subject}</td><td className="p-3">{ticket.categoryName}</td><td className="p-3">{ticket.representativeName || "—"}</td><td className="p-3 font-bold">{ticket.priority}</td><td className="p-3">{statuses[ticket.status] || ticket.status}</td><td className="p-3">{new Date(ticket.createdAt).toLocaleString("ar")}</td></tr>)}</tbody></table>{!tickets.length && <p className="p-4 text-ink/60">لا توجد شكاوى.</p>}</div></div>;
+}

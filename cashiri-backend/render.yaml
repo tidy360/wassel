@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: cashiri-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run prisma:migrate:deploy && npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+
+  - type: cron
+    name: cashiri-alerts
+    runtime: node
+    plan: free
+    # Render schedules use UTC; 04:00 UTC is 06:00 in Sudan (UTC+2).
+    schedule: "0 4 * * *"
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    startCommand: npm run alerts
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 12h

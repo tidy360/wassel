@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html[dir="rtl"] body { font-family: "Tajawal", system-ui, sans-serif; }
+html[dir="ltr"] body { font-family: "Inter", system-ui, sans-serif; }
+
+/* Numbers stay legible and aligned in both directions — money should never mirror. */
+.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+
+:focus-visible { outline: 2px solid theme("colors.gold.500"); outline-offset: 2px; }
